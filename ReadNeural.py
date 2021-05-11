@@ -46,7 +46,7 @@ if __name__=="__main__":
             seeg = mne.filter.filter_data(seeg.T, sr, 0, 511, method='iir').T
         return seeg, filter_used
     
-    seeg, filter_used = filterdata(seeg_data, 'nf')
+    seeg, filter_used = filterdata(seeg_data, 'gamma')
      
     # Get channel names
     tot_channels = int(data[1]['info']['channel_count'][0])
@@ -133,9 +133,30 @@ if __name__=="__main__":
         _, p_values_env[:,c] = fdrcorrection(p_values_env[:,c], alpha=0.05, method='indep', is_sorted=False)
 
     
+    # Estimate significant intervals
+    significant = p_values < 0.05
+    threshold = 25 #is it ok? How do I choose it?
+    
+    dict = {}
+    for x in range(tot_channels):
+        dict[x] = []
+        my_l = significant[:,x]
+        for c, t in enumerate(my_l):
+            if not t:
+                continue
+            elif t and False not in my_l[c:c+threshold]:
+                dict[x].append(c)
+                
+
+    sign_th = np.zeros((int(sr/2),tot_channels), dtype=bool)
+    for x in range(tot_channels):
+        if len(dict[x]) != 0:
+            for c in dict[x]:
+                sign_th[c:c+threshold, x] = True
+
+    
     # Plot ERPs with confidence interval
     t = np.array(range(int(sr/2)))
-    significant = p_values < 0.05
     for c, channel in enumerate(channels):
         # Plot ERP + confidence interval
         plt.figure()
@@ -151,7 +172,7 @@ if __name__=="__main__":
         ymin = 0 - (lim + 10*(lim)/100)
         ymax = (lim + 10*(lim)/100)
         plt.ylim([ymin, ymax])
-        plt.fill_between(t, ymin, ymax, where=(significant[:,c]), color = 'k', alpha = 0.1)
+        plt.fill_between(t, ymin, ymax, where=(sign_th[:,c]), color = 'k', alpha = 0.1)
 
         plt.xlabel('Time [ms]')
         plt.ylabel('Voltage')
@@ -160,7 +181,7 @@ if __name__=="__main__":
         plt.legend(loc="upper left")    
         #plt.show()
 
-        if True in significant[:,c]:
+        if True in sign_th[:,c]:
             plt.savefig(output_path + '/ERPs/{}/significant/'.format(filter_used) + str(c+1) + '_' + str(channel))
         else:
             plt.savefig(output_path + '/ERPs/{}/not_s/'.format(filter_used) + str(c+1) + '_' + str(channel))
