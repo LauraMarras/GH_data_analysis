@@ -26,26 +26,27 @@ if __name__=="__main__":
    
     markers = data[0]['time_series']
     task_ts = data[0]['time_stamps']
-    seeg = data[1]['time_series']
+    seeg_data = data[1]['time_series']
     seeg_ts = data[1]['time_stamps']
 
     sr = int(data[1]['info']['nominal_srate'][0])
 
     
     # Filter data
-    filter_used = ''
-    def filterdata(filter):
-        seeg = seeg.astype(float)
+    def filterdata(data, filter):
+        seeg = data.astype(float)
         if filter == 'gamma':
-            seeg = mne.filter.filter_data(seeg.T, sr, 120, 70, method='iir').T
+            seeg = mne.filter.filter_data(seeg.T, sr, 70, 120, method='iir').T
             filter_used = 'gamma'
         elif filter == 'theta':
-            seeg = mne.filter.filter_data(seeg.T, sr, 7, 4, method='iir').T
+            seeg = mne.filter.filter_data(seeg.T, sr, 4, 7, method='iir').T
             filter_used = 'theta'
         else:
-            print('Filter not defined, returned unfiltered data')
-        return seeg
+            filter_used = 'nf'
+            seeg = mne.filter.filter_data(seeg.T, sr, 0, 511, method='iir').T
+        return seeg, filter_used
     
+    seeg, filter_used = filterdata(seeg_data, 'nf')
      
     # Get channel names
     tot_channels = int(data[1]['info']['channel_count'][0])
@@ -96,79 +97,76 @@ if __name__=="__main__":
     # Estimate baseline mean for each channel --> mean across trials
     BL_ERP = np.mean(sEEG_BL, axis=(0,1))
 
-    # Compute envelope
-    hilbert3 = lambda x: sy.signal.hilbert(x, sy.fftpack.next_fast_len(len(x)),axis=0)[:len(x)]
-    c_env = np.abs(hilbert3(sEEG_c - BL_ERP)) #is baseline correction needed here?
-    i_env = np.abs(hilbert3(sEEG_i - BL_ERP))
-
     # Estimate ERPs on corrected trials (baseline substraction)
-    #i_ERP = np.mean(sEEG_i - BL_ERP, axis=0)
-    #c_ERP = np.mean(sEEG_c - BL_ERP, axis=0)
+    i_ERP = np.mean(sEEG_i - BL_ERP, axis=0)
+    c_ERP = np.mean(sEEG_c - BL_ERP, axis=0)
 
-    i_ERP = np.mean(i_env, axis=0)
-    c_ERP = np.mean(c_env, axis=0)
-    
     # Estimate std of the mean (standard error)
-    #i_sdm = (np.std(sEEG_i - BL_ERP, axis=0))/len(incorrect_trials)
-    #c_sdm = (np.std(sEEG_c - BL_ERP, axis=0))/len(correct_trials)
-
-    i_sdm = (np.std(i_env, axis=0))/len(incorrect_trials)
-    c_sdm = (np.std(c_env, axis=0))/len(correct_trials)
+    i_sdm = (np.std(sEEG_i - BL_ERP, axis=0))/len(incorrect_trials)
+    c_sdm = (np.std(sEEG_c - BL_ERP, axis=0))/len(correct_trials)
 
     # Statistics: 2samples t-test
-    #_, p_values = sy.stats.ttest_ind((sEEG_c - BL_ERP), (sEEG_i - BL_ERP), axis=0)
-    _, p_values = sy.stats.ttest_ind(c_env, i_env, axis=0)
-
-    #Bonferroni correction
+    _, p_values = sy.stats.ttest_ind((sEEG_c - BL_ERP), (sEEG_i - BL_ERP), axis=0)
+    
+    # Bonferroni correction
     #p_values = p_values*(p_values.shape[0]*p_values.shape[1])
 
-    #FDR correction
+    # FDR correction
     for c in range(130):
         _, p_values[:,c] = fdrcorrection(p_values[:,c], alpha=0.05, method='indep', is_sorted=False)
     
-    #Plot ERPs with confidence interval
+    # ENVELOPE
+        #estimate envelope
+    hilbert3 = lambda x: sy.signal.hilbert(x, sy.fftpack.next_fast_len(len(x)),axis=0)[:len(x)]
+    c_env = np.abs(hilbert3(sEEG_c - BL_ERP))
+    i_env = np.abs(hilbert3(sEEG_i - BL_ERP))
+        #estimate ERPs
+    i_ERP_env = np.mean(i_env, axis=0)
+    c_ERP_env = np.mean(c_env, axis=0)
+        #estimate std
+    i_sdm_env = (np.std(i_env, axis=0))/len(incorrect_trials)
+    c_sdm_env = (np.std(c_env, axis=0))/len(correct_trials)
+        #ttest
+    _, p_values_env = sy.stats.ttest_ind(c_env, i_env, axis=0)
+        #FDR correction
+    for c in range(130):
+        _, p_values_env[:,c] = fdrcorrection(p_values_env[:,c], alpha=0.05, method='indep', is_sorted=False)
+
+    
+    # Plot ERPs with confidence interval
     t = np.array(range(int(sr/2)))
     significant = p_values < 0.05
     for c, channel in enumerate(channels):
+        # Plot ERP + confidence interval
         plt.figure()
         plt.plot(t, c_ERP[:,c], 'g', lw=3, label='correct')
         plt.fill_between(t, c_ERP[:,c] + 2 * c_sdm[:,c], c_ERP[:,c] - 2 * c_sdm[:,c], color = 'g', alpha = 0.3)
         plt.plot(t, i_ERP[:,c], 'r', lw=3, label='incorrect')
         plt.fill_between(t, i_ERP[:,c] + 2 * i_sdm[:,c], i_ERP[:,c] - 2 * i_sdm[:,c], color = 'r', alpha = 0.3)
 
-        #plt.fill_between(t, -200, 200, where=(significant[:,c]), color = 'k', alpha = 0.1)
-
-        """ if (max(c_ERP[:,c]) or max(i_ERP[:,c])) > 150 or (min(i_ERP[:,c]) or min(c_ERP[:,c])) < -150:
-            ymax = 200
-            ymin = -200
-            elif (max(c_ERP[:,c]) or max(i_ERP[:,c])) > 100 or (min(i_ERP[:,c]) or min(c_ERP[:,c])) < -100:
-                ymax = 150
-                ymin = -150
-            elif (max(c_ERP[:,c]) or max(i_ERP[:,c])) > 50 or (min(i_ERP[:,c]) or min(c_ERP[:,c])) < -50:
-                ymax = 100
-                ymin = -100
-            else:
-                ymax = 50
-                ymin = -50 """
-        ymax = max([max(c_ERP[:,c]), max(i_ERP[:,c])]) + ((20*max([max(c_ERP[:,c]), max(i_ERP[:,c])]))/100)
-        ymin = min([min(c_ERP[:,c]), min(i_ERP[:,c])]) - ((20*min([min(c_ERP[:,c]), min(i_ERP[:,c])]))/100)
-        plt.ylim([ymin - ((10*ymin)/100), ymax + ((10*ymax)/100)])
-        plt.fill_between(t, -ymin - ((10*ymin)/100), ymax + ((10*ymax)/100), where=(significant[:,c]), color = 'k', alpha = 0.1)
+        # Shade where significant
+        ymax = max([max(c_ERP[:,c]), max(i_ERP[:,c])]) #+ ((20*max([max(c_ERP[:,c]), max(i_ERP[:,c])]))/100)
+        ymin = min([min(c_ERP[:,c]), min(i_ERP[:,c])]) #- ((20*min([min(c_ERP[:,c]), min(i_ERP[:,c])]))/100)
+        lim = max([ymax, abs(ymin)])
+        ymin = 0 - (lim + 10*(lim)/100)
+        ymax = (lim + 10*(lim)/100)
+        plt.ylim([ymin, ymax])
+        plt.fill_between(t, ymin, ymax, where=(significant[:,c]), color = 'k', alpha = 0.1)
 
         plt.xlabel('Time [ms]')
-        #plt.ylabel('Voltage')
-        plt.ylabel('Energy') #?
+        plt.ylabel('Voltage')
+        #plt.ylabel('Envelope')
         plt.title('channel ' + str(channel))
         plt.legend(loc="upper left")    
         #plt.show()
 
         if True in significant[:,c]:
-            plt.savefig('./ERPs/FDR_filtered_gamma_envelope/' + str(c+1) + '_' + str(channel))
+            plt.savefig(output_path + '/ERPs/{}/significant/'.format(filter_used) + str(c+1) + '_' + str(channel))
         else:
-            plt.savefig('./ERPs/FDR_filtered_gamma_envelope/not_s/' + str(c+1) + '_' + str(channel))
+            plt.savefig(output_path + '/ERPs/{}/not_s/'.format(filter_used) + str(c+1) + '_' + str(channel))
        
     # Save epoched data
-    np.save('output_path/FBc_sEEG_{}.npy'.format(filter_used), sEEG_c)
-    np.save('output_path/FBi_sEEG{}.npy'.format(filter_used), sEEG_i)
-    np.save('output_path/BL_sEEG_{}.npy'.format(filter_used), sEEG_BL)
+    np.save(output_path + '/FBc_sEEG_{}.npy'.format(filter_used), sEEG_c)
+    np.save(output_path + '/FBi_sEEG_{}.npy'.format(filter_used), sEEG_i)
+    np.save(output_path + '/BL_sEEG_{}.npy'.format(filter_used), sEEG_BL)
         
