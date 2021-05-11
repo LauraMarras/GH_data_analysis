@@ -6,6 +6,8 @@ import scipy as sy
 from statsmodels.stats.multitest import fdrcorrection
 import mne
 
+data_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Python/StreamFiles/exp001'
+output_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Python/Results'
 
 def locate_pos(available, targets):
     pos = bisect.bisect_right(available, targets)
@@ -20,7 +22,7 @@ def locate_pos(available, targets):
         return pos-1  
 
 if __name__=="__main__":
-    data, _ = pyxdf.load_xdf('./exp001/Epilpp_test.xdf')
+    data, _ = pyxdf.load_xdf(data_path + '/Epilpp_test.xdf')
    
     markers = data[0]['time_series']
     task_ts = data[0]['time_stamps']
@@ -31,10 +33,20 @@ if __name__=="__main__":
 
     
     # Filter data
-    seeg = seeg.astype(float)
-    #seeg = mne.filter.filter_data(seeg.T, sr, 7, 4, method='iir').T
-    seeg = mne.filter.filter_data(seeg.T, sr, 120, 70, method='iir').T
-
+    filter_used = ''
+    def filterdata(filter):
+        seeg = seeg.astype(float)
+        if filter == 'gamma':
+            seeg = mne.filter.filter_data(seeg.T, sr, 120, 70, method='iir').T
+            filter_used = 'gamma'
+        elif filter == 'theta':
+            seeg = mne.filter.filter_data(seeg.T, sr, 7, 4, method='iir').T
+            filter_used = 'theta'
+        else:
+            print('Filter not defined, returned unfiltered data')
+        return seeg
+    
+     
     # Get channel names
     tot_channels = int(data[1]['info']['channel_count'][0])
     channels = [x['label'][0] for x in data[1]['info']['desc'][0]['channels'][0]['channel']]
@@ -156,7 +168,7 @@ if __name__=="__main__":
             plt.savefig('./ERPs/FDR_filtered_gamma_envelope/not_s/' + str(c+1) + '_' + str(channel))
        
     # Save epoched data
-    """ np.save('./OutputData/FBc_sEEG_filtered.npy', sEEG_c)
-    np.save('./OutputData/FBi_sEEG_filtered.npy', sEEG_i)
-    np.save('./OutputData/BL_sEEG_filtered.npy', sEEG_BL) """
+    np.save('output_path/FBc_sEEG_{}.npy'.format(filter_used), sEEG_c)
+    np.save('output_path/FBi_sEEG{}.npy'.format(filter_used), sEEG_i)
+    np.save('output_path/BL_sEEG_{}.npy'.format(filter_used), sEEG_BL)
         
