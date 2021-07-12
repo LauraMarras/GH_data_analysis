@@ -1,7 +1,7 @@
 import pyxdf
 import numpy as np
 
-data, header = pyxdf.load_xdf('./exp001/Epilpp_test.xdf')
+data, header = pyxdf.load_xdf('C:/Users/laura/OneDrive/Documenti/Internship/Python/Data/RawData/kh23_test.xdf')
 streams = {}
 initial_time = None
 trial_n = 0
