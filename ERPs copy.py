@@ -4,12 +4,13 @@ import matplotlib.pyplot as plt
 from scipy.stats import ttest_ind
 from statsmodels.stats.multitest import fdrcorrection
 import os
+import Preprocessing_classifier
 
-def ERP(classify='accuracy', lowpass=False):
-    data_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Python/Data/PreprocessedData_rereferencing/baseline-1.5_{}/'.format(classify)
-    out_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Python/Results/ERPs_rereference/{}/'.format(classify)
-    participants = ['kh23']#'kh21', 'kh22', 'us1']
-    sampling_rates = [1024]#, 1024, 1200]
+def ERP(classify='accuracy', lowpass='', participants = []):
+    data_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Data_Analysis/Data/PreprocessedData_rereferencing/baseline-1.5_{}/'.format(classify)
+    out_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Data_Analysis/Results/ERPs_rereference/{}/'.format(classify)
+    participants = participants
+    sampling_rates = [1024, 1024, 1024, 1024]#, 1024, 1200]
 
     for pNr, participant in enumerate(participants):
     # Load data   
@@ -17,9 +18,12 @@ def ERP(classify='accuracy', lowpass=False):
         channels = np.load(data_path + participant + '_channels.npy')
         sr = sampling_rates[pNr]
 
-        if lowpass:
+        if lowpass == 'low':
             seeg = np.load(data_path + participant + '_low_pass_preprocessed_sEEG.npy')
             string='_low_pass'
+        elif lowpass == 'superlow':
+            seeg = np.load(data_path + participant + '_superlow_pass_preprocessed_sEEG.npy')
+            string='_superlow_pass'
         else:
             seeg = np.load(data_path + participant + '_preprocessed_sEEG.npy')
             string=''
@@ -119,4 +123,5 @@ def ERP(classify='accuracy', lowpass=False):
 
 
 if __name__=="__main__":
-    ERP(lowpass=True)
+    #Preprocessing_classifier.preprocess_data(reref='laplacian', feature='preprocess_only', window='baseline', window_length=1.5, preprocess_lowpass='superlow', participants=['kh21', 'kh22', 'kh23', 'kh24'])
+    ERP(lowpass='superlow', participants=['kh21', 'kh22', 'kh23', 'kh24'])

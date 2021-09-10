@@ -40,6 +40,9 @@ def filterdata(data, filter, sr):
     elif filter == 'lowpass':
         sEEG_filtered = mne.filter.filter_data(sEEG_filtered.T, sr, 0.5, 30, method='iir').T
         filter_used = 'lowpass'
+    elif filter == 'superlowpass':
+        sEEG_filtered = mne.filter.filter_data(sEEG_filtered.T, sr, 0.5, 7, method='iir').T
+        filter_used = 'superlowpass'
     return sEEG_filtered, filter_used
 
 # Define function to implement laplacian rereferencing
@@ -105,12 +108,16 @@ def commonAverageR(data):
     return data_CAR
 
 # Define function to preprocess data and save relevant .np files
-def preprocess_data(reref='laplacian', feature='envelope', window='feedback', window_length=1, delay=0, subtract_delay=False, classify='accuracy', preprocess_lowpass=False):
+def preprocess_data(reref='laplacian', feature='envelope', window='feedback', window_length=1, delay=0, subtract_delay=False, classify='accuracy', preprocess_lowpass='', participants=[]):
 # Preprocessing
-    data_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Python/Data/RawData/'
-    out_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Python/Data/PreprocessedData_rereferencing/{}/'.format(window + '-' + str(window_length) + '_' + classify)
+    data_path = 'C:/Users/laura/Documents/RawData/'
+    if delay != 0:
+        dela='_delay_' + str(delay)
+    else:
+        dela='_no delay' 
+    out_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Data_Analysis/Data/PreprocessedData_rereferencing/{}/'.format(reref + '/' + window + '-' + str(window_length) + '_' + classify + dela)
     bands = {'delta':[1, 2, 3], 'theta':[4,5,6,7], 'alpha':[8,9,10,11,12], 'beta':np.arange(13,31).tolist(), 'gamma':np.arange(70,121).tolist()}
-    participants = ['kh23']
+    participants = participants
     
     for participant in participants:
     # Load data
@@ -144,8 +151,8 @@ def preprocess_data(reref='laplacian', feature='envelope', window='feedback', wi
             if channel[1] not in chan_dict[channel[0]].keys():
                 chan_dict[channel[0]][channel[1]] = [channel[2:]]
             else:
-                chan_dict[channel[0]][channel[1]].append(channel[2:])      
-
+                chan_dict[channel[0]][channel[1]].append(channel[2:])
+    
     # Rereferencing
         if reref == 'laplacian':
             seeg_reref, chann_reref = laplacianR(seeg_channels_rej, channels)
@@ -156,7 +163,8 @@ def preprocess_data(reref='laplacian', feature='envelope', window='feedback', wi
         if not os.path.exists(out_path):
             os.makedirs(out_path)
             np.save(out_path + '/{}_channels.npy'.format(participant), channels)
-            np.save(out_path + '/{}_channels_des.npy'.format(participant), chann_reref)
+            if reref == 'laplacian':
+                np.save(out_path + '/{}_channels_des.npy'.format(participant), chann_reref)
         else:
             if not os.path.exists(out_path + '/{}_channels.npy'.format(participant)):
                 np.save(out_path + '/{}_channels.npy'.format(participant), channels)
@@ -168,72 +176,67 @@ def preprocess_data(reref='laplacian', feature='envelope', window='feedback', wi
                 else:
                     print('{}_channels.npy'.format(participant) + ' File already existing in folder')
 
-    # Obtain labels depending on function argument
+    # Obtain all possible labels and store them in an array
         labels = []
+        labels_array = np.zeros((90,6), dtype=int)
+        c=0
+        for x in markers:
+            if 'Sum' in x[0]:
+                summary = ((x[0].replace(',', '')).replace('Sum Trail: ', '')).split(' ')
+                labels_array[c,0] = int(summary[0])
+                labels_array[c,1] = int(summary[1])
+                labels_array[c,2] = int(summary[2])
+                if summary[-1] == 'Correct':
+                    labels_array[c,-1] = 1
+                elif summary[-1] == 'Incorrect':
+                    labels_array[c,-1] = 0
+                if summary[-2] == 'w':
+                    labels_array[c,-2] = 1                     
+                elif summary[-2] == 'l':
+                    labels_array[c,-2] = 0
+                if labels_array[c,-1] == 1:
+                    labels_array[c,3] = labels_array[c,-2]
+                elif labels_array[c,-1] == 0:
+                    labels_array[c,3] = 1 - labels_array[c,-2]
+                c+=1
+    
+    # Save labels_array name file
+        if not os.path.exists(out_path):
+            os.makedirs(out_path)
+            np.save(out_path + '/{}_labels_array.npy'.format(participant), labels_array)
+        else:
+            if not os.path.exists(out_path + '/{}_labels_array.npy'.format(participant)):
+                np.save(out_path + '/{}_labels_array.npy'.format(participant), labels_array)
+            else:
+                print('{}_labels_array.npy'.format(participant) + ' File already existing in folder')
+
+    # Define labels depending on function argument
         # Distinguish correct from incorrect trials and create labels vector
         if classify == 'accuracy':
-            for x in markers:
-                if 'Sum' in x[0]:
-                    summary = ((x[0].replace(',', '')).replace('Sum Trail: ', '')).split(' ')
-                    if summary[-1] == 'Correct':
-                        labels.append(1)                        
-                    elif summary[-1] == 'Incorrect':
-                        labels.append(0)
+            labels = labels_array[:,-1]
         # Distinguish winning from losing stimuli trials and create labels vector
         elif classify == 'stim_valence':
-            for x in markers:
-                if 'Sum' in x[0]:
-                    summary = ((x[0].replace(',', '')).replace('Sum Trail: ', '')).split(' ')
-                    if summary[-1] == 'Correct':
-                        if summary[-2] == 'w':
-                            labels.append(1)
-                        elif summary[-2] == 'l':
-                            labels.append(0)                        
-                    elif summary[-1] == 'Incorrect':
-                        if summary[-2] == 'w':
-                            labels.append(0)
-                        elif summary[-2] == 'l':
-                            labels.append(1) 
+            labels = labels_array[:,3]
         # Distinguish winning from losing decisions and create labels vector
         elif classify == 'decision':
-            for x in markers:
-                if 'Sum' in x[0]:
-                    summary = ((x[0].replace(',', '')).replace('Sum Trail: ', '')).split(' ')
-                    if summary[-2] == 'w':
-                        labels.append(1)                     
-                    elif summary[-2] == 'l':
-                        labels.append(0)
+            labels = labels_array[:,-2]
         # Distinguish learning from non-learning trials and create labels vector
         elif classify == 'learning':
-            thirds = []
-            for x in markers:
-                if 'Sum' in x[0]:
-                    summary = ((x[0].replace(',', '')).replace('Sum Trail: ', '')).split(' ')
-                    stim = summary[1]
-                    if summary[2] == '1':
-                        for y in markers:
-                            if 'Sum' in y[0]:
-                                summary2 = ((x[0].replace(',', '')).replace('Sum Trail: ', '')).split(' ')
-                                if summary2[1] == stim:
-                                    if summary2[2] == '2':
-                                        if summary2[-1] == 'Correct':
-                                            labels.append(1)
-                                        elif summary2[-1] == 'Incorrect':
-                                            labels.append(0)
-                    elif summary[2] == '2':
-                        stim = summary[1]
-                        for y in markers:
-                            if 'Sum' in y[0]:
-                                summary2 = ((x[0].replace(',', '')).replace('Sum Trail: ', '')).split(' ')
-                                if summary2[1] == stim:
-                                    if summary2[2] == '3':
-                                        if summary2[-1] == 'Correct':
-                                            labels.append(1)
-                                        elif summary2[-1] == 'Incorrect':
-                                            labels.append(0)
-                    elif summary[-3] == '3':
-                        thirds.append(summary[0])                        
+            labels = np.zeros((90), dtype=int)
+            for c, x in enumerate(labels_array):
+                if x[2] == 1:
+                    for m in labels_array[c:,:]:
+                        if m[1] == x[1] and m[2]==2:
+                            labels[c]= m[-1]
+                elif x[2] == 2:
+                    for m in labels_array[c:,:]:
+                        if m[1] == x[1] and m[2]==3:
+                            labels[c]= m[-1]
+                elif x[2] == 3:
+                    labels[c]= 3
+          
         tot_trials = len(labels)
+        zerotrials = np.count_nonzero(labels == 3)
         labels = np.array(labels)
     
     # Save labels name file
@@ -251,8 +254,10 @@ def preprocess_data(reref='laplacian', feature='envelope', window='feedback', wi
             indices = [x for x in range(len(markers)) if 'start Fb' in markers[x][0]]
         elif window == 'baseline':
             indices = [x for x in range(len(markers)) if 'Start Cross' in markers[x][0]]
-        elif window == 'stimulus' or 'decision':
+        elif window == 'stimulus':
             indices = [x for x in range(len(markers)) if 'Start Stim' in markers[x][0]]
+        elif window == 'decision':
+            indices = [x for x in range(len(markers)) if 'Press' in markers[x][0] and 'wrong' not in markers[x][0]]
         epoch_start = np.array([locate_pos(seeg_ts, x) for x in task_ts[indices]]) + int(delay*sr)
         if subtract_delay:
             epoch_end = np.array([locate_pos(seeg_ts, x) for x in seeg_ts[epoch_start]]) + int((window_length * sr)-delay*sr)
@@ -264,9 +269,12 @@ def preprocess_data(reref='laplacian', feature='envelope', window='feedback', wi
     ### Preprocess only
         if feature == 'preprocess_only':
         # lowpass if required
-            if preprocess_lowpass:
+            if preprocess_lowpass == 'low':
                 seeg_lowpassed, _ = filterdata(seeg_reref, 'lowpass', sr)
                 string = '_low_pass'
+            elif preprocess_lowpass == 'superlow':
+                seeg_lowpassed, _ = filterdata(seeg_reref, 'superlowpass', sr)
+                string = '_superlow_pass'
             else:
                 seeg_lowpassed = seeg_reref
                 string = ''
@@ -275,7 +283,7 @@ def preprocess_data(reref='laplacian', feature='envelope', window='feedback', wi
             for c, x in enumerate(epoch_start):
                 for channel in range(tot_channels):
                     sEEG_epoched_nf[c,:,channel] = seeg_lowpassed[x:int(epoch_end[c]), channel] 
-        # Save spectra array .np file            
+        # Save epochs .np file            
             if not os.path.exists(out_path):
                 os.makedirs(out_path)
                 np.save(out_path + '/{}_preprocessed_sEEG.npy'.format(participant + string), sEEG_epoched_nf)
@@ -344,7 +352,7 @@ def preprocess_data(reref='laplacian', feature='envelope', window='feedback', wi
 
 
 if __name__=="__main__":
-    preprocess_data(reref='laplacian', feature='preprocess_only', window='baseline', window_length=1.5, preprocess_lowpass=True)
+    preprocess_data(reref='laplacian', feature='preprocess_only', window='decision', window_length=1, delay = -0.5, preprocess_lowpass='superlow', participants=['kh24'])
     '''
     reref = ['laplacian', 'CAR']
     feature = ['envelope', 'spectra', 'preprocess_only']
