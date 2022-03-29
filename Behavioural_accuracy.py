@@ -1,248 +1,96 @@
+from cmath import nan
 import pyxdf
 import numpy as np
-import matplotlib.pyplot as plt
-import scipy.stats as ss
-import bisect
-import statsmodels.stats.anova as sm
+from scipy.stats import ttest_rel
 import pandas as pd
-
-# Define function to get indices
-def locate_pos(available, targets):
-    pos = bisect.bisect_right(available, targets)
-    if pos == 0:
-        return 0
-    if pos == len(available):
-        return len(available)-1
-    if abs(available[pos]-targets) < abs(available[pos-1]-targets):
-        return pos
-    else:
-        return pos-1  
-
-# define function for significant bars
-def barplot_annotate_brackets(num1, num2, data, center, height, yerr=None, dh=.05, barh=.05, fs=None, maxasterix=None):
-    """ 
-    Annotate barplot with p-values.
-
-    :param num1: number of left bar to put bracket over
-    :param num2: number of right bar to put bracket over
-    :param data: string to write or number for generating asterixes
-    :param center: centers of all bars (like plt.bar() input)
-    :param height: heights of all bars (like plt.bar() input)
-    :param yerr: yerrs of all bars (like plt.bar() input)
-    :param dh: height offset over bar / bar + yerr in axes coordinates (0 to 1)
-    :param barh: bar height in axes coordinates (0 to 1)
-    :param fs: font size
-    :param maxasterix: maximum number of asterixes to write (for very small p-values)
-    """
-
-    if type(data) is str:
-        text = data
-    else:
-        # * is p < 0.05
-        # ** is p < 0.005
-        # *** is p < 0.0005
-        # etc.
-        text = ''
-        p = .05
-
-        while data < p:
-            text += '*'
-            p /= 10.
-
-            if maxasterix and len(text) == maxasterix:
-                break
-
-        if len(text) == 0:
-            text = 'n. s.'
-
-    lx, ly = center[num1], height[num1]
-    rx, ry = center[num2], height[num2]
-
-    if yerr:
-        ly += yerr[num1]
-        ry += yerr[num2]
-
-    ax_y0, ax_y1 = plt.gca().get_ylim()
-    dh *= (ax_y1 - ax_y0)
-    barh *= (ax_y1 - ax_y0)
-
-    y = max(ly, ry) + dh
-
-    barx = [lx, lx, rx, rx]
-    bary = [y, y+barh, y+barh, y]
-    mid = ((lx+rx)/2, y+barh)
-
-    plt.plot(barx, bary, c='black', alpha= 0.3)
-
-data_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Data_Analysis/Data/RawData/'
-output_path = 'C:/Users/laura/OneDrive/Documenti/Internship/Data_Analysis/Results/'
-participants = ['kh21', 'kh22', 'kh23', 'kh24']
-pp_sigh = {}
-pp_sighRT = {}
-x = np.arange(4)
-X = np.arange(3)
-width = 0.20  # the width of the bars
-histfig, ax = plt.subplots()
-RTsfig, RTsax = plt.subplots()
-
-#create data
-df = pd.DataFrame({'patient': np.repeat(['P01', 'P02', 'P03', 'P04'], 3),
-                'repetition': np.tile([1, 2, 3], 4),
-                'response': [0, 0, 0,
-                            0, 0, 0,
-                            0, 0, 0, 
-                            0, 0, 0]})
-df.head                            
+import os
+from statsmodels.stats.multitest import (fdrcorrection, multipletests)
+from statsmodels.stats.anova import AnovaRM
+from statsmodels.stats.multicomp import (pairwise_tukeyhsd, MultiComparison)
+import scikit_posthocs as sp
+import pingouin as pg
 
 
-for pNr, participant in enumerate(participants):
-    data, header = pyxdf.load_xdf(data_path + participant + '_test.xdf')
-    streams = {}
-    initial_time = None
-    trial_n = 0
-    Stim_n = 0
+def behavioural_accuracy(participants=['kh21','kh22', 'kh23', 'kh24','kh25']):
+    data_path = 'C:/Users/laura/Documents/Data_Analysis/Data/RawData/'
+    out_path = 'C:/Users/laura/Documents/Data_Analysis/Data/BehaviouralResults/'
 
-    allTrials = {}
-    all_FB = {}
-    streams_originaltime = {}
+    pp_scores = np.zeros((len(participants), 4))
+    pp_pvals = np.zeros((len(participants), 3))
 
+    ppDF = pd.DataFrame(columns = ['pNr', 'trial nr.', 'stimulus nr.', 'repetition', 'decision', 'accuracy'])
+        
 
-    for stream in data:
-        markers = stream['time_series']
-        time_points = stream['time_stamps']
-
-        if isinstance(markers, list): # list of strings
-            all_streams = zip(time_points, markers)
-            for timestamp, marker in all_streams:
-                if initial_time is None:
-                    initial_time = timestamp
-                streams[(round((timestamp-initial_time), 3))] = marker[0]
-            for value in streams.values():
-                if 'Sum' in value:
-                    my_list = ((value.replace(',', '')).replace('Sum Trail: ', '')).split(' ')
-                    #string3 = string2.replace('Sum Trail: ', '')
-                    #my_list = string2.split(' ')
-                    allTrials[my_list[0]] = my_list[1:]
-        elif isinstance(markers, np.ndarray): #numeric data
-            continue
-        else:
-            raise RuntimeError('Unknown stream format')
-
-    for key, trial in allTrials.items():
-        if trial[-1] == 'Correct':
-            allTrials[key][-1] = 1
-        elif trial[-1] == 'Incorrect':
-            allTrials[key][-1] = 0
-        else:
-            allTrials[key][-1] = 'n/a'
-
-    # Analyze x stimulus
-    stimuli={}
-    for trial in allTrials.values():
-        if trial[0] in stimuli:
-            stimuli[trial[0]]+=[trial[3]]
-        else:
-            stimuli[trial[0]]=[trial[3]]
-    
-    repetitions = {1:[], 2:[], 3:[]}
-    for stim in stimuli.values():
-        repetitions[1].append(stim[0])
-        repetitions[2].append(stim[1])
-        repetitions[3].append(stim[2])
-
-    # Statistics: paired samples t-test
-    _, p1_2 = ss.ttest_rel(repetitions[1], repetitions[2])
-    _, p1_3 = ss.ttest_rel(repetitions[1], repetitions[3])
-    _, p2_3 = ss.ttest_rel(repetitions[2], repetitions[3])
-    pp_sigh[participant] = [p1_2, p1_3, p2_3]
-    
-    # Analyze data per stimulus repetition
-    accuracy={1:0, 2:0, 3:0, 'tot':0}
-    for trial in stimuli.values():
-        for rep, acc in enumerate(trial):
-            accuracy[rep+1]+= acc
-            accuracy['tot']+= acc
-    
+    for pNr, participant in enumerate(participants):
     # Load data
-    data, _ = pyxdf.load_xdf(data_path + '{}_test.xdf'.format(participant))
-    if 'kh' in participant:
-        n = 1
-    elif 'us' in participant:
-        n = 3
-        good_channels = list(np.arange(0,40))
-    markers = data[0]['time_series']
-    task_ts = data[0]['time_stamps']
-    seeg_ts = data[n]['time_stamps']
-    sr = int(float(data[n]['info']['nominal_srate'][0]))
-    # Reaction times
-    indices_cue = [x for x in range(len(markers)) if 'Start Cue' in markers[x][0]]
-    indices_response = [x for x in range(len(markers)) if 'Press' in markers[x][0] and 'wrong' not in markers[x][0]]
-    epoch_cue = np.array([locate_pos(seeg_ts, x) for x in task_ts[indices_cue]])
-    epoch_response = np.array([locate_pos(seeg_ts, x) for x in task_ts[indices_response]])
-    RTs =(epoch_response - epoch_cue)/sr
-    repetition_labels = []
-    for M in markers:
-        if 'Sum' in M[0]:
-            repetition_labels.append(int(((M[0].replace(',', '')).replace('Sum Trail: ', '')).split(' ')[2]))
-    repetition_labels = np.array(repetition_labels)
-    RTs1 = RTs[repetition_labels<2]
-    RTs2 = RTs[repetition_labels==2]
-    RTs3 = RTs[repetition_labels>2]
+        data, _ = pyxdf.load_xdf(data_path + '{}_test.xdf'.format(participant))
+        if '25' in participant:
+            markers = data[1]['time_series']
+        else:
+            markers = data[0]['time_series']
+        
+
+    # Create dataframe with all info for each trial
+        trials=[(((x[0].replace(',', '')).replace('Sum Trail: ', '')).split(' ')[0:5])+[pNr] for x in markers if 'Sum' in x[0]]
+        header_labels = ['trial nr.', 'stimulus nr.', 'repetition', 'decision', 'accuracy', 'pNr']
+        trialsDF = pd.DataFrame(trials, columns=header_labels)
+        trialsDF = trialsDF.replace(['Correct', 'Incorrect', 'No', 'w', 'l', 'None'], [1, 0, nan, 1, 0, nan])
+    # Add each PP dataframe to general DF
+        ppDF = ppDF.append(trialsDF)
     
-    # Statistics: paired samples t-test
-    _, pRT1_2 = ss.ttest_rel(RTs1, RTs2)
-    _, pRT1_3 = ss.ttest_rel(RTs1, RTs3)
-    _, pRT2_3 = ss.ttest_rel(RTs2, RTs3)
-    pp_sighRT[participant] = [pRT1_2, pRT1_3, pRT2_3]
+    # Extract accuracy info for each repetition + total
+        rep1 = trialsDF['accuracy'][trialsDF['repetition']=='1'].to_numpy()
+        rep2 = trialsDF['accuracy'][trialsDF['repetition']=='2'].to_numpy()
+        rep3 = trialsDF['accuracy'][trialsDF['repetition']=='3'].to_numpy()
+        total = trialsDF['accuracy'].to_numpy()
+
+    # Estimate and store scores for each repetition + total
+        pp_scores[pNr,:] = [np.nanmean(rep1), np.nanmean(rep2), np.nanmean(rep3), np.nanmean(total)]
+
+    # Single participant level statistics: paired samples t-test for each rep combination
+        _, p1_2 = ttest_rel(rep1, rep2, nan_policy='omit')
+        _, p1_3 = ttest_rel(rep1, rep3, nan_policy='omit')
+        _, p2_3 = ttest_rel(rep2, rep3, nan_policy='omit')
+        
+    # Store p_vals
+        pp_pvals[pNr,:] = [p1_2, p1_3, p2_3]
+        #_, pcorrected, _, _ = multipletests(pp_pvals[pNr,:], method='bonferroni', is_sorted=False)
 
 
-# # RTs plots
-#     T = [np.mean(RTs1)*1000, np.mean(RTs2)*1000, np.mean(RTs3)*1000]
-#     RTsax.plot(X,T, marker='.', linestyle=':', label= 'P0' + str(pNr+1))   
+    # Group level statistics: AnovaRM
+    ppDF = ppDF.dropna().astype(int) 
+    ppMeans = ppDF[['pNr', 'repetition', 'accuracy']].groupby(['pNr', 'repetition']).mean().reset_index()
 
-# # Histograms
-#     y = [v for v in accuracy.values()]
-#     y[:3] = [v/30 for v in y[:3]]
-#     y[3] = y[3]/90
+    anovaRes = AnovaRM(data=ppMeans, depvar='accuracy', subject='pNr', within=['repetition']).fit()
+    anovaResDF = anovaRes.anova_table
+    print(anovaRes)
 
-#     if pNr == 0:
-#         rects = ax.bar(x - 1.5*width, y, width, align='center', alpha=0.5, label='P0' + str(pNr+1))
-#     elif pNr == 1:
-#         rects = ax.bar(x - 0.5*width, y, width, align='center', alpha=0.5, label='P0' + str(pNr+1))
-#     elif pNr == 2:
-#         rects = ax.bar(x + 0.5*width, y, width, align='center', alpha=0.5, label='P0' + str(pNr+1))
-#     elif pNr == 3:
-#         rects = ax.bar(x + 1.5*width, y, width, align='center', alpha=0.5, label='P0' + str(pNr+1))
-#     for b in rects:
-#         height = b.get_height()
-#         ax.annotate('{}'.format(round(height, 2)),
-#             xy=(b.get_x() + b.get_width() / 2, height),
-#             xytext= (0, 0.5),
-#             textcoords="offset points",
-#             ha='center', va='bottom', size=7)
-#     ax.axhline(y=0.5, color='grey', alpha=0.3, linestyle='--')
-# ax.set_ylabel('Accuracy (correct/total)')
-# ax.set_title('Accuracy scores per participant and repetition')
-# ax.set_xticks(x)
-# ax.set_xticklabels(['1st\npresentation', '2nd\npresentation', '3rd\npresentation', 'total'])
-# ax.set_ymargin(0.1)
-# ax.legend(loc="upper left")
+    anovaRes2 = pg.rm_anova(dv='accuracy', within='repetition', subject='pNr', data=ppMeans, detailed=True)
+    print(anovaRes2)
 
+    # multiple comparisons TukeyHSD test
+    res = pairwise_tukeyhsd(ppDF['accuracy'], ppDF['repetition'])
+    np.set_printoptions(suppress=True)
+    print(res)
 
-# RTsax.set_ylabel('Reaction times (ms)')
-# RTsax.set_title('Reaction times per participant and repetition')
-# RTsax.set_xticks(X)
-# RTsax.set_xticklabels(['1st\npresentation', '2nd\npresentation', '3rd\npresentation'])
-# RTsax.set_ymargin(0.1)
-# RTsax.legend(loc="best")
+    res2 = pairwise_tukeyhsd(ppMeans['accuracy'], ppMeans['repetition'])
+    np.set_printoptions(suppress=True)
+    print(res2)
 
-# plt.savefig(output_path + 'accuracy_behavioural_RTs', dpi=300)
+    res3 = pg.pairwise_ttests(dv='accuracy', within='repetition', subject='pNr', padjust='fdr_bh', data=ppMeans)
+    print(res3)
 
-for part, pp in pp_sigh.items():
-    pp_sigh[part] = np.array(pp) < 0.05
-for part, pp in pp_sighRT.items():
-    pp_sighRT[part] = np.array(pp) < 0.05
+    sp.posthoc_ttest(ppDF, val_col='accuracy', group_col='repetition', p_adjust=None, pool_sd=True)
 
-print(pp_sigh)
-print(pp_sighRT)
+    #mod = MultiComparison(ppDF[ppDF['pNr']==3]['accuracy'], ppDF[ppDF['pNr']==3]['repetition'])
+   
+    # Save results
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)     
+    
+    #np.savez(out_path + 'behavioural_accuracyScores_pVals', 
+        #pp_scores=pp_scores,
+        #pp_pvals=pp_pvals)
 
+if __name__=="__main__":
+    behavioural_accuracy()
