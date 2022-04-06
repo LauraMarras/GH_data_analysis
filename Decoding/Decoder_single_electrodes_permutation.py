@@ -105,6 +105,7 @@ def decoding_single_channel(reref='elecShaftR', window='feedback', classify='acc
       else:
          np.savez(file_fold + file_name, 
             score_means=score_means,
+            errors=errors,
             read_channels=channels)
 
 if __name__=="__main__":

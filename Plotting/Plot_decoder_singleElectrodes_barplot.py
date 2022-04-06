@@ -5,7 +5,7 @@ import matplotlib.colors as mcolors
 import matplotlib.cm as mcm 
 import pandas as pd
 
-def plot_decoding_single_channel(reref='elecShaftR', window='feedback', classify='accuracy', participants=[], repetitions=['rep_all'], action='show', band=None):
+def plot_decoding_single_channel(reref='elecShaftR', window='feedback', classify='accuracy', participants=[], repetitions=['rep_all'], action='show', cv_method='KFold', band=None):
    data_path = 'C:/Users/laura/Documents/Data_Analysis/Data/DecodingResults/' + window + '_' + classify + '/'
    out_path = 'C:/Users/laura/Documents/Data_Analysis/Plots/' + window + '_' + classify + '/'
    chan_locs_path = 'C:/Users/laura/Documents/Data_Analysis/Data/Labelling/'
@@ -13,15 +13,19 @@ def plot_decoding_single_channel(reref='elecShaftR', window='feedback', classify
    for pNr, participant in enumerate(participants):
       # Load data
       if band is None:
-         data = np.load(data_path + participant + '/' + participant + '_decoder_single_electrodes.npz')
+         data = np.load(data_path + '{}/{}_decoder_single_electrodes_{}_permTest.npz'.format(participant,participant,cv_method))
+         
       else:
-         data = np.load(data_path + participant + '/' + participant + '_decoder_single_electrodes{}.npz'.format('_' + band))
-      score_means = data ['score_means']
-      p_vals = data ['p_vals']
-      errors = data ['errors']
-      channels = data ['read_channels']
+         data = np.load(data_path + '{}/{}_decoder_single_electrodes_{}_{}_permTest.npz'.format(participant, participant, cv_method, '_' + band))
+         
+      score_means = data ['score_means']      
+      channels = data['read_channels']
+      p_vals = data['p_vals']
       threshold = data['threshold']
       chan_locs = pd.read_excel(chan_locs_path + '{}/locs.xlsx'.format(participant))
+
+      if cv_method == 'KFold':
+         errors = data['errors']
 
       # Define color palette
       palette = ['#adb5bd']
@@ -47,8 +51,13 @@ def plot_decoding_single_channel(reref='elecShaftR', window='feedback', classify
       y = np.arange(11)/10 
 
       plt.figure(figsize=[9.5,4.5], tight_layout=True)
-      plt.bar(x, score_means, color=color_coding, alpha=0.5, tick_label=tick_description, yerr=errors, ecolor='k', error_kw=dict(lw=0.4, capsize=0.5))
+      if cv_method == 'KFold':
+         plt.bar(x, score_means, color=color_coding, alpha=0.5, tick_label=tick_description, yerr=errors, ecolor='k', error_kw=dict(lw=0.4, capsize=0.5))
+      else:
+         plt.bar(x, score_means, color=color_coding, alpha=0.5, tick_label=tick_description)
+      
       plt.axhline(y=0.5,color='r', linestyle=':', lw=1)
+      
       for l in [0.6, 0.7, 0.8, 0.9]:
          plt.axhline(y=l, color='grey', linestyle='--', alpha=0.2, lw=1)
       
@@ -75,10 +84,10 @@ def plot_decoding_single_channel(reref='elecShaftR', window='feedback', classify
       if action == 'save':
          if band is None:
             folder = out_path
-            filename = participant + '_decoder_singleElectrodes_barPlot'
+            filename = '{}_decoder_singleElectrodes_barPlot_{}'.format(participant, cv_method)
          else:
             folder = out_path + band + '/'
-            filename = participant + '_decoder_singleElectrodes_barPlot_' + band
+            filename = '{}_decoder_singleElectrodes_barPlot_{}_{}'.format(participant, cv_method, band)
          
          if not os.path.exists(folder):
             os.makedirs(folder)   
@@ -89,11 +98,12 @@ def plot_decoding_single_channel(reref='elecShaftR', window='feedback', classify
 
 if __name__=="__main__":
    reref = 'elecShaftR' #, 'laplacian', 'CAR', 'none']
-   window = 'feedback'
-   classify = 'accuracy' #'decision', 'stim_valence', 'accuracy', 'learning'
+   window = 'stimulus'
+   classify = 'stimvalence' #'decision', 'stimvalence', 'accuracy', 'learning'
    participants = ['kh21', 'kh22', 'kh23', 'kh24', 'kh25'] # 'kh21', 'kh22', 'kh23', 'kh24', 'kh25'
-   repetitions = ['rep_all']
+   repetitions = ['rep_2_3']
    action = 'save' #'show'
    bands = ['delta', 'theta', 'alpha', 'beta', 'gamma']
+   cv_method= 'LeaveOneOut'
 
-   plot_decoding_single_channel(reref=reref, window=window, classify=classify, participants=participants, repetitions=repetitions, action=action, band=None)
+   plot_decoding_single_channel(reref=reref, window=window, classify=classify, participants=participants, repetitions=repetitions, action=action, cv_method=cv_method, band=None)

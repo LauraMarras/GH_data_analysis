@@ -32,14 +32,14 @@ def decoding_single_bands(reref='elecShaftR', window='feedback', classify='accur
          if cv_method == 'LeaveOneOut':
             cv = LeaveOneOut()
             CV_pred = cross_val_predict(clf, X, labels, cv=cv)
-            CV_scores = roc_auc_score(labels, CV_pred)
+            score_means[b] = roc_auc_score(labels, CV_pred)
          
          elif cv_method == 'KFold':
             cv = StratifiedKFold(n_splits=5)
             CV_scores = cross_val_score(clf, X, labels, cv=cv, scoring='roc_auc')
 
-         score_means[b] = CV_scores.mean()
-         errors[b] = CV_scores.std()
+            score_means[b] = CV_scores.mean()
+            errors[b] = CV_scores.std()
       
    # Run permutation test 
       if n_permutations!=0:
@@ -60,8 +60,6 @@ def decoding_single_bands(reref='elecShaftR', window='feedback', classify='accur
             # Store permuted scores, stds
             score_perms[perm] = perm_scores_env.mean()
             error_perms[perm] = perm_scores_env.std()
-            
-
       
       # Estimate p-value of each channel
          for b in range(len(bands)):
@@ -74,7 +72,7 @@ def decoding_single_bands(reref='elecShaftR', window='feedback', classify='accur
 
    # Save decoding results
       file_fold = out_path + participant + '/'
-      file_name = participant + '_decoder_single_bands_' + cv_method
+      file_name = '{}_decoder_single_bands_{}'.format(participant, cv_method)
       
       if not os.path.exists(file_fold):
          os.makedirs(file_fold)     
@@ -100,8 +98,8 @@ if __name__=="__main__":
    classify = 'stimvalence' #'decision', 'stimvalence', 'accuracy', 'learning'
    participants = ['kh21','kh22','kh23','kh24','kh25'] #[] # 'kh21', 'kh22', 'kh23', 'kh24', 'kh25'
    repetitions = 'rep_2_3'
-   n_permutations = 0 #1000
+   n_permutations = 1000 #1000
    bands = ['delta', 'theta', 'alpha', 'beta', 'gamma']
-   cv_method = 'LeaveOneOut' #'KFold', 'LeaveOneOut'
+   cv_method = 'KFold' #'KFold', 'LeaveOneOut'
 
    decoding_single_bands(reref=reref, window=window, classify=classify, participants=participants, repetitions=repetitions, bands=bands, n_permutations=n_permutations, cv_method=cv_method)

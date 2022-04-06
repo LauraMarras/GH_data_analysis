@@ -15,14 +15,14 @@ def plot_decoding_single_band(reref='elecShaftR', window='feedback', classify='a
 
 # Load data
    for pNr, participant in enumerate(participants):
-      data = np.load(data_path +'{}/{}_decoder_single_bands_{}.npz'.format(participant,participant,cv_method))
+      data = np.load(data_path +'{}/{}_decoder_single_bands_{}_permTest.npz'.format(participant,participant,cv_method))
       score_means[pNr] = data ['score_means']
-      errors[pNr] = data ['errors']
-
-      data = np.load(data_path +'{}/{}_decoder_single_bands.npz'.format(participant,participant))
       p_vals[pNr] = data ['p_vals']
       score_perms[pNr] = data ['score_perms']
       threshold[pNr] = data['threshold'][3]
+
+      if cv_method=='KFold':
+         errors[pNr] = data ['errors']
 
 # Add average score across participants per band
    score_means_avg = np.mean(score_means, axis=0)
@@ -66,12 +66,20 @@ def plot_decoding_single_band(reref='elecShaftR', window='feedback', classify='a
    # Plot each PPs bars
    diff = - 3
    for pNr, participant in enumerate(participants[:-1]):
-      ax.bar(x + diff*width, up_bars[pNr,:], width, bottom=bottom_bars[pNr,:], color=colors[pNr], yerr=errs[pNr,:], align='center', alpha=0.7, error_kw=dict(ecolor='k', lw=0.4, capsize=0.5, alpha=0.7), label='P0' + str(pNr+1))
+      if cv_method=='KFold':
+         ax.bar(x + diff*width, up_bars[pNr,:], width, bottom=bottom_bars[pNr,:], color=colors[pNr], yerr=errs[pNr,:], align='center', alpha=0.7, error_kw=dict(ecolor='k', lw=0.4, capsize=0.5, alpha=0.7), label='P0' + str(pNr+1))
+      elif cv_method=='LeaveOneOut':
+         ax.bar(x + diff*width, up_bars[pNr,:], width, bottom=bottom_bars[pNr,:], color=colors[pNr], alpha=0.7, label='P0' + str(pNr+1))
+      
       ax.bar(x + diff*width, bottom_bars[pNr,:], width, color=colors[pNr], alpha=0.3)
       diff += 1
    
    # Plot average bars
-   ax.bar(x + (1+diff)*width, up_bars[-1,:], width, bottom=bottom_bars[-1,:], color=colors[-1], yerr=errs[-1,:], align='center', alpha=0.7, error_kw=dict(ecolor='k', lw=0.4, capsize=0.5, alpha=0.7), label='Average')
+   if cv_method=='KFold':
+      ax.bar(x + (1+diff)*width, up_bars[-1,:], width, bottom=bottom_bars[-1,:], color=colors[-1], alpha=0.7, label='Average', yerr=errs[-1,:], align='center', error_kw=dict(ecolor='k', lw=0.4, capsize=0.5, alpha=0.7))
+   elif cv_method=='LeaveOneOut':   
+      ax.bar(x + (1+diff)*width, up_bars[-1,:], width, bottom=bottom_bars[-1,:], color=colors[-1], alpha=0.7, label='Average')
+   
    ax.bar(x + (1+diff)*width, bottom_bars[-1,:], width, color=colors[-1], alpha=0.3)
       
    # Draw horizontal lines
@@ -115,7 +123,7 @@ if __name__=="__main__":
    repetitions = ['rep_2_3']
    action = 'save' #'show'
    bands = ['delta', 'theta', 'alpha', 'beta', 'gamma']
-   cv_method= 'LeaveOneOut' #KFold
+   cv_method= 'KFold' #KFold
 
    plot_decoding_single_band(reref=reref, window=window, classify=classify, participants=participants, repetitions=repetitions, action=action, bands=bands, cv_method=cv_method)
 
