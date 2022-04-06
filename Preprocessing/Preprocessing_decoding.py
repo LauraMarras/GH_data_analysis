@@ -171,7 +171,7 @@ def preprocess_data(reref='elecShaftR', participants=[], bands={'delta':[1, 2, 3
         
     # Identify no-answer trials and remove them from trials list 
         no_answer_trials = [int(x[0]) for x in trials if x[-1]=='No']
-        if 'long_stim' not in window_of_i:
+        if window_of_i[0] not in ['stimulus', 'long_stim']:
             for x in no_answer_trials:
                 trials.pop(x-1)
 
@@ -333,7 +333,7 @@ def preprocess_data(reref='elecShaftR', participants=[], bands={'delta':[1, 2, 3
 
 if __name__=="__main__":
     for reref in ['elecShaftR']:
-        preprocess_data(reref=reref, participants=['kh25'], window_of_i=['long_FB']) #bands={'gamma':np.arange(70,120).tolist()}
+        preprocess_data(reref=reref, participants=['kh25'], window_of_i=['long_stim']) #bands={'gamma':np.arange(70,120).tolist()}
     
     '''
     reref = ['laplacian', 'CAR', 'elecShaftR', 'none']
