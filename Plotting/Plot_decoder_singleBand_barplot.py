@@ -2,22 +2,25 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 
-def plot_decoding_single_band(reref='elecShaftR', window='feedback', classify='accuracy', participants=[], repetitions=['rep_all'], action='show', bands=['delta', 'theta', 'alpha', 'beta', 'gamma'], n_permutations=1000):
+def plot_decoding_single_band(reref='elecShaftR', window='feedback', classify='accuracy', participants=[], repetitions=['rep_all'], action='show', bands=['delta', 'theta', 'alpha', 'beta', 'gamma'], n_permutations=1000, cv_method='KFold'):
    data_path = 'C:/Users/laura/Documents/Data_Analysis/Data/DecodingResults/' + window + '_' + classify + '/'
    out_path = 'C:/Users/laura/Documents/Data_Analysis/Plots/' + window + '_' + classify + '/'
    
    score_means = np.zeros((len(participants), len(bands)))
    errors = np.zeros((len(participants), len(bands)))
+   
    score_perms = np.zeros((len(participants), n_permutations))
    p_vals = np.zeros((len(participants), len(bands)))
    threshold = np.zeros((len(participants)))
 
 # Load data
    for pNr, participant in enumerate(participants):
-      data = np.load(data_path + participant + '/' + participant + '_decoder_single_bands.npz')
+      data = np.load(data_path +'{}/{}_decoder_single_bands_{}.npz'.format(participant,participant,cv_method))
       score_means[pNr] = data ['score_means']
-      p_vals[pNr] = data ['p_vals']
       errors[pNr] = data ['errors']
+
+      data = np.load(data_path +'{}/{}_decoder_single_bands.npz'.format(participant,participant))
+      p_vals[pNr] = data ['p_vals']
       score_perms[pNr] = data ['score_perms']
       threshold[pNr] = data['threshold'][3]
 
@@ -97,7 +100,7 @@ def plot_decoding_single_band(reref='elecShaftR', window='feedback', classify='a
    if action == 'save':
       if not os.path.exists(out_path):
          os.makedirs(out_path)   
-      plt.savefig(out_path + 'decoder_singleBands_barplot_colors2', dpi=300)
+      plt.savefig(out_path + 'decoder_singleBands_barplot_colors2_{}'.format(cv_method), dpi=300)
 
 # or just show it
    elif action == 'show':
@@ -106,14 +109,15 @@ def plot_decoding_single_band(reref='elecShaftR', window='feedback', classify='a
 
 if __name__=="__main__":
    reref = 'elecShaftR' #, 'laplacian', 'CAR', 'none']
-   window = 'feedback'
-   classify = 'accuracy' #'decision', 'stim_valence', 'accuracy', 'learning'
+   window = 'stimulus'
+   classify = 'stimvalence' #'decision', 'stim_valence', 'accuracy', 'learning'
    participants = ['kh21', 'kh22', 'kh23', 'kh24', 'kh25'] # 'kh21', 'kh22', 'kh23', 'kh24', 'kh25'
-   repetitions = ['rep_all']
-   action = 'show' #'show'
+   repetitions = ['rep_2_3']
+   action = 'save' #'show'
    bands = ['delta', 'theta', 'alpha', 'beta', 'gamma']
+   cv_method= 'LeaveOneOut' #KFold
 
-   plot_decoding_single_band(reref=reref, window=window, classify=classify, participants=participants, repetitions=repetitions, action=action, bands=bands)
+   plot_decoding_single_band(reref=reref, window=window, classify=classify, participants=participants, repetitions=repetitions, action=action, bands=bands, cv_method=cv_method)
 
 
 
