@@ -332,10 +332,10 @@ def preprocess_data(reref='elecShaftR', participants=[], bands={'delta':[1, 2, 3
 
 
 if __name__=="__main__":
-    for reref in ['elecShaftR']:
-        preprocess_data(reref=reref, participants=['kh25'], window_of_i=['long_stim']) #bands={'gamma':np.arange(70,120).tolist()}
-    
-    '''
-    reref = ['laplacian', 'CAR', 'elecShaftR', 'none']
-    participants = ['kh21', 'kh22', 'kh23', 'kh24', 'kh25']
-    '''
+    reref = 'elecShaftR' #['laplacian', 'CAR', 'elecShaftR', 'none']
+    participants=['kh21','kh22','kh23','kh24','kh25'] #['kh21', 'kh22', 'kh23', 'kh24', 'kh25']
+    window_of_i=['long_stim']
+    #bands={'gamma':np.arange(70,120).tolist()}
+
+
+    preprocess_data(reref=reref, participants=participants, window_of_i=window_of_i)

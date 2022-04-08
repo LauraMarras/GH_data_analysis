@@ -1,10 +1,13 @@
 import numpy as np
 import os
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_predict
+from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import LeaveOneOut
+from sklearn.metrics import roc_auc_score
 
-def decoder_singlePP(reref='elecShaftR', window='long_FB', classify='accuracy', participants=[], repetitions=['rep_1', 'rep_2_3', 'rep_all'], band='gamma', n_permutations=1000):
+def decoder_singlePP(reref='elecShaftR', window='long_FB', classify='accuracy', participants=[], repetitions=['rep_1', 'rep_2_3', 'rep_all'], band='gamma', n_permutations=1000, cv_method='KFold'):
    data_path = 'C:/Users/laura/Documents/Data_Analysis/Data/PreprocessedData/'
    out_path = 'C:/Users/laura/Documents/Data_Analysis/Data/DecodingResults/' + window + '_' + classify + '/' + band + '/'
    
@@ -14,58 +17,77 @@ def decoder_singlePP(reref='elecShaftR', window='long_FB', classify='accuracy', 
          features = np.load(data_path + window + '/' + reref + '/' + reref + '_' + participant + '_' + band + '_' + rep + '_envelope_windowed.npy')
          labels = np.load(data_path + classify + '_labels' + '/' + participant + '_' + classify + '_labels_' + rep + '.npy')
 
-      # Classifier + permutation test
+      # Classifier
          windows = [*range(0, features.shape[1])]
          score_means = np.zeros((len(windows)))
          errors = np.zeros(len(windows))
-         score_perms = np.zeros((n_permutations))
-         error_perms = np.zeros((n_permutations))
-         p_vals = np.zeros((len(windows)))
-
-         # Run permutation test
-         for perm in range(n_permutations):
-            permuted_labels = np.random.permutation(labels)
-            random_window = np.random.choice(len(windows))
-      
-         # Define Classifier, run Crossvalidation for permuted labels dataset
-            clf = LinearDiscriminantAnalysis(solver='lsqr', shrinkage='auto')
-            kf = StratifiedKFold(n_splits=5)
-            perm_scores_env = cross_val_score(clf, features[:,random_window,:], permuted_labels, cv=kf, scoring="roc_auc")
          
-         # Store permuted scores, stds, threshold
-            score_perms[perm] = perm_scores_env.mean()
-            error_perms[perm] = perm_scores_env.std()
-
          # Run Classifier for each window
          for win in windows:
             X = features[:,win,:]
             clf = LinearDiscriminantAnalysis(solver='lsqr', shrinkage='auto')
-            kf = StratifiedKFold(n_splits=5)
-            CV_scores_env = cross_val_score(clf, X, labels, scoring="roc_auc", cv=kf)
-            score_means[win] = CV_scores_env.mean()
-            errors[win] = CV_scores_env.std()
+            # Define cross validation method to use
+            if cv_method == 'LeaveOneOut':
+               cv = LeaveOneOut()
+               CV_pred = cross_val_predict(clf, X, labels, cv=cv)
+               score_means[win] = roc_auc_score(labels, CV_pred)
+
+            elif cv_method == 'KFold':
+               cv = StratifiedKFold(n_splits=5)
+               CV_scores_env = cross_val_score(clf, X, labels, scoring="roc_auc", cv=cv)
+
+               score_means[win] = CV_scores_env.mean()
+               errors[win] = CV_scores_env.std()
+         
+         # Run permutation test 
+         if n_permutations!=0:
+            score_perms = np.zeros((n_permutations))
+            error_perms = np.zeros((n_permutations))
+            p_vals = np.zeros((len(windows)))
+
+            for perm in range(n_permutations):
+               permuted_labels = np.random.permutation(labels)
+               random_window = np.random.choice(len(windows))
+      
+            # Define Classifier, run Crossvalidation for permuted labels dataset
+               clf = LinearDiscriminantAnalysis(solver='lsqr', shrinkage='auto')
+               kf = StratifiedKFold(n_splits=5)
+               perm_scores_env = cross_val_score(clf, features[:,random_window,:], permuted_labels, cv=kf, scoring="roc_auc")
+            
+            # Store permuted scores, stds, threshold
+               score_perms[perm] = perm_scores_env.mean()
+               error_perms[perm] = perm_scores_env.std()
 
          # Estimate p-value of each window
-            p_vals[win] = np.count_nonzero(score_perms > score_means[win]) / n_permutations
+            for win in windows:
+               p_vals[win] = np.count_nonzero(score_perms > score_means[win]) / n_permutations
 
-         # Estimate significant threshold and significant windows
-         score_perms_sorted = np.sort(score_perms)
-         threshold = np.percentile(score_perms_sorted, q=[0.1, 1, 5, 95, 99, 99.9])
-         significant_windows = [win for win in windows if score_means[win] > threshold[3]]
+            # Estimate significant threshold and significant windows
+            score_perms_sorted = np.sort(score_perms)
+            threshold = np.percentile(score_perms_sorted, q=[0.1, 1, 5, 95, 99, 99.9])
+            significant_windows = [win for win in windows if score_means[win] > threshold[3]]
 
       # Save dataset
          if not os.path.exists(out_path + participant + '/'):
-            os.makedirs(out_path + participant + '/')     
-         np.savez(out_path  + participant + '/' + participant + '_decoder_' + band + '_' + rep, 
-            score_means=score_means,
-            p_vals_2=p_vals,
-            errors=errors,
-            score_perms_2=score_perms,
-            error_perms_2=error_perms,
-            threshold=threshold,
-            significant_windows=significant_windows)
+            os.makedirs(out_path + participant + '/')    
 
-def grand_average(window='long_FB', classify='accuracy', participants=[], repetitions=['rep_1', 'rep_2_3', 'rep_all'], band='gamma'):
+         if n_permutations!=0:
+            filename = '{}/{}_decoder_{}_{}_{}_permTest'.format(participant, participant, band, rep, cv_method) 
+            np.savez(out_path  + filename, 
+               score_means=score_means,
+               p_vals_2=p_vals,
+               errors=errors,
+               score_perms_2=score_perms,
+               error_perms_2=error_perms,
+               threshold=threshold,
+               significant_windows=significant_windows)
+         else:
+            filename = '{}/{}_decoder_{}_{}_{}'.format(participant, participant, band, rep, cv_method) 
+            np.savez(out_path  + filename, 
+               score_means=score_means,
+               errors=errors)
+
+def grand_average(window='long_FB', classify='accuracy', participants=[], repetitions=['rep_1', 'rep_2_3', 'rep_all'], band='gamma', cv_method='KFold'):
    data_path = 'C:/Users/laura/Documents/Data_Analysis/Data/DecodingResults/' + window + '_' + classify + '/' + band + '/'
    out_path = 'C:/Users/laura/Documents/Data_Analysis/Data/DecodingResults/' + window + '_' + classify + '/' + band + '/'
    
@@ -117,13 +139,15 @@ def grand_average(window='long_FB', classify='accuracy', participants=[], repeti
             
 if __name__=="__main__":
    reref = 'elecShaftR' #, 'laplacian', 'CAR', 'none']
-   window = 'long_FB' #'feedback' # 'baseline', 'stimulus', 'decision'
-   classify = 'accuracy' #'decision', 'stim_valence', 'accuracy', 'learning'
+   window = 'long_stim' #'feedback' # 'baseline', 'stimulus', 'decision'
+   classify = 'stimvalence' #'decision', 'stim_valence', 'accuracy', 'learning'
    participants = ['kh21', 'kh22', 'kh23', 'kh24', 'kh25']
    repetitions = ['rep_1', 'rep_2_3', 'rep_all']
-   bands = ['gamma'] #'gamma', 'delta', 'theta', 'alpha', 'beta'
-   n_permutations = 1000
-   
+   bands = ['alpha'] #'gamma', 'delta', 'theta', 'alpha', 'beta'
+   n_permutations = 0
+   cv_method = 'KFold' #'LeaveOneOut' #'KFold'
+
+
    for band in bands:
-      #decoder_singlePP(reref=reref, window=window, classify=classify, participants=participants, repetitions=repetitions, band=band, n_permutations=n_permutations)
-      grand_average(window=window, classify=classify, participants=participants, repetitions=repetitions, band=band)
+      decoder_singlePP(reref=reref, window=window, classify=classify, participants=participants, repetitions=repetitions, band=band, n_permutations=n_permutations, cv_method=cv_method)
+      #grand_average(window=window, classify=classify, participants=participants, repetitions=repetitions, band=band)

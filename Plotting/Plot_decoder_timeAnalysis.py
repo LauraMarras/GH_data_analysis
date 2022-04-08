@@ -4,8 +4,9 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from scipy.interpolate import interp1d
+from matplotlib.collections import LineCollection
 
-def plot_decoding_results_single_PP(reref='elecShaftR', window='long_FB', classify='accuracy', participants=[], repetitions=['rep_1', 'rep_2_3', 'rep_all'], band='gamma', action='show'):
+def plot_decoding_results_single_PP(reref='elecShaftR', window='long_FB', classify='accuracy', participants=[], repetitions=['rep_1', 'rep_2_3', 'rep_all'], band='gamma', action='show', cv_method='KFold'):
    data_path = 'C:/Users/laura/Documents/Data_Analysis/Data/DecodingResults/' + window + '_' + classify + '/'
    out_path = 'C:/Users/laura/Documents/Data_Analysis/Plots/' + window + '_' + classify + '/'
 
@@ -31,8 +32,8 @@ def plot_decoding_results_single_PP(reref='elecShaftR', window='long_FB', classi
       'none':''
    }
    window_strings = {
-      'long_FB': ' during baseline and feedback based on ',
-      'long_stim':' during baseline and stimulus presentation based on ' 
+      'long_FB': 'Feedback',
+      'long_stim':'Stimulus' 
    }
 
    for pNr, participant in enumerate(participants):
@@ -41,21 +42,28 @@ def plot_decoding_results_single_PP(reref='elecShaftR', window='long_FB', classi
       
       for r, rep in enumerate(repetitions):
       # Load data   
-         score_means = np.load(data_path + band + '/' + participant + '_decoder_' + band + '_' + rep + '.npz')['score_means']
-         errors = np.load(data_path + band + '/' + participant + '_decoder_' + band + '_' + rep + '.npz')['errors']
-         threshold = np.load(data_path + band + '/' + participant + '_decoder_' + band + '_' + rep + '.npz')['threshold']
+         data = np.load(data_path +'{}/{}/{}_decoder_{}_{}_{}.npz'.format(band, participant, participant, band, rep, cv_method))
+         score_means = data['score_means']
+         
+         data_p = np.load(data_path +'{}/{}/{}_decoder_{}_{}_{}_permTest.npz'.format(band, participant, participant, band, rep, 'KFold'))
+         
+         threshold = data_p['threshold']
+         
+         if cv_method=='KFold':
+            errors = data['errors']
          
       # Define x, y and confidence intervals
          x = [x - 500 for x in [x + 25 for x in [*range(0, 1989, 51)]]]
          y = score_means
-         yu = y + errors
-         yl = y - errors
+         if cv_method=='KFold':
+            yu = y + errors
+            yl = y - errors
 
       # Interpolate x and y
-         x_interp = np.linspace(x[0], x[-1], num=(len(x)*2)-1, endpoint=True)
-         yu_interp = interp1d(x, yu)(x_interp)
-         yl_interp = interp1d(x, yl)(x_interp)
-         
+            x_interp = np.linspace(x[0], x[-1], num=(len(x)*2)-1, endpoint=True)
+            yu_interp = interp1d(x, yu)(x_interp)
+            yl_interp = interp1d(x, yl)(x_interp)
+            
       # Create ColorMap
          # Define color palette
          palette = ['#adb5bd']
@@ -69,45 +77,60 @@ def plot_decoding_results_single_PP(reref='elecShaftR', window='long_FB', classi
          norm = mcolors.BoundaryNorm(bounds, len(bounds)-1)
          cmap = mcolors.LinearSegmentedColormap.from_list('my_cmap', palette, len(bounds)-1)
          
-      # Plot scores
-         axs[r].plot(x,y, color='midnightblue', lw=1)
+         if cv_method=='KFold': 
+         # Plot scores
+            axs[r].plot(x,y, color='midnightblue', lw=1)
 
-      # Add confidence interval color coding significant windows
-         count = 0.5
-         for i in range(len(x_interp)-1):
-            axs[r].fill_between([x_interp[i],x_interp[i+1]], [yu_interp[i], yu_interp[i+1]], [yl_interp[i], yl_interp[i+1]], color=cmap(norm(score_means[int(count)])), norm=norm, alpha=0.2, lw=0)
-            count+=0.5
-      
+         # Add confidence interval color coding significant windows
+            count = 0.5
+            for i in range(len(x_interp)-1):
+               axs[r].fill_between([x_interp[i],x_interp[i+1]], [yu_interp[i], yu_interp[i+1]], [yl_interp[i], yl_interp[i+1]], color=cmap(norm(score_means[int(count)])), norm=norm, alpha=0.2, lw=0)
+               count+=0.5
+         
+         elif cv_method=='LeaveOneOut':
+         # Plot scores
+            axs[r].plot(x,y, color='midnightblue', lw=1)
+            axs[r].fill_between(x, threshold[3], 1, color='pink', alpha=0.2, lw=0)
+            x_masked = np.ma.masked_where(y <= threshold[3], x)
+            y_masked = np.ma.masked_where(y <= threshold[3], y)
+            
+            axs[r].plot(x_masked, y_masked, color='midnightblue', lw=1, marker='*')
+
       # Plot horizontal and vertical lines
          axs[r].axhline(y=0.5,color='k', linestyle=':', lw=0.5, alpha=0.5)
          axs[r].axvline(x=0,color='k', lw=1)
          axs[r].axvline(x=1000,color='k', lw=1)
          
       # Set labels, subtitles, ax limits and ticks
-         axs[r].set_title(rep_strings[rep], fontsize=8, pad=0.6)
+         axs[r].set_title(rep_strings[rep], fontsize=8)
          
          axs[r].set_ylabel('ROC AUC', fontsize=7)
-         axs[r].set_xlabel('Time (ms)', fontsize=7)
          
          y_tick = [x/100 for x in [*range(0, 101, 25)]]
          axs[r].set_yticks(y_tick)
          for tick in axs[r].yaxis.get_major_ticks():
             tick.label.set_fontsize(6)
 
-         x_tick_lab = ['-500', '-250',    '0\n\nFeedback onset',  '250',  '500',  '750', '1000\n\nFeedback offset', '1250', '1500']
-         axs[r].set_xticklabels(x_tick_lab)
-         for tick in axs[r].xaxis.get_major_ticks():
-            tick.label.set_fontsize(7)
-         
+         x_tick_lab = ['-500', '-250', '0\n{} onset'.format(window_strings[window]),  '250',  '500',  '750', '1000\n{} offset'.format(window_strings[window]), '1250', '1500']
+         if r == len(repetitions)-1:   
+            axs[r].set_xlabel('Time (ms)', fontsize=7)
+            axs[r].set_xticklabels(x_tick_lab)
+            for tick in axs[r].xaxis.get_major_ticks():
+               tick.label.set_fontsize(7)
+         else:
+            axs[r].set_xticklabels([])
+
+            
          axs[r].set_ylim(0,1.1)      
          axs[r].set_xlim(x[0],x[-1])
       
       # Set colorbar
-         plt.colorbar(mcm.ScalarMappable(norm=norm, cmap=cmap), 
-         ax=axs[r], use_gridspec=True,
-         fraction=0.01, shrink=0.8, 
-         alpha=0.3,
-         ticks = bounds, label='AUC score', format='%.2f')
+         if cv_method=='KFold':
+            plt.colorbar(mcm.ScalarMappable(norm=norm, cmap=cmap), 
+            ax=axs[r], use_gridspec=True,
+            fraction=0.01, shrink=0.8, 
+            alpha=0.3,
+            ticks = bounds, label='AUC score', format='%.2f')
 
    # Remove spines
       for ax in fig.get_axes():
@@ -118,14 +141,20 @@ def plot_decoding_results_single_PP(reref='elecShaftR', window='long_FB', classi
    # Set Title and figure size
       title = 'P0' + str(pNr+1) + ' ROC AUC scores over time ' + band_strings[band] #'\n\n Classification of ' + classify + window_strings[window]
       fig.suptitle(title, fontsize=10, y=0.98, ha='center')
-      figure = plt.gcf()
-      figure.set_size_inches(10,7)
+      #fig.set_size_inches(10,7)
+
+      fig.tight_layout(pad=1.5)
+      #plt.subplots_adjust(bottom=0.1, 
+       #             top=0.9, 
+        #            wspace=0.4, 
+         #           hspace=0.4)
 
 # Save Figure   
       if action == 'save':
          if not os.path.exists(out_path + participant + '/'):
             os.makedirs(out_path + participant + '/')   
-         plt.savefig(out_path + participant + '/' + participant + '_decoder_' + band + '_perm2', dpi=300)
+         figname = '{}/{}_decoder_{}_{}_perm2'.format(participant, participant, band, cv_method)
+         plt.savefig(out_path + figname, dpi=300)
 
 # or just show it
       if action == 'show':
@@ -262,14 +291,15 @@ def plot_decoding_results_average_PPs(reref='elecShaftR', window='long_FB', clas
 
 if __name__=="__main__":
    reref = 'elecShaftR' #, 'laplacian', 'CAR', 'none']
-   window = 'long_FB'
-   classify = 'accuracy' #'decision', 'stim_valence', 'accuracy', 'learning'
+   window = 'long_stim'
+   classify = 'stimvalence' #'decision', 'stim_valence', 'accuracy', 'learning'
    participants = ['kh21', 'kh22', 'kh23', 'kh24', 'kh25'] # 'kh21', 'kh22', 'kh23', 'kh24', 'kh25'
    repetitions = ['rep_1', 'rep_2_3', 'rep_all']
-   bands = ['gamma', 'theta', 'delta', 'alpha', 'beta'] #'theta', 'alpha', 'beta'
-   action = 'show' #'save'
+   bands = ['alpha']#, 'theta', 'delta', 'alpha', 'beta'] #'theta', 'alpha', 'beta'
+   action = 'save' #'save'
+   cv_method= 'LeaveOneOut' #'KFold'
    
    for band in bands:
-      #plot_decoding_results_single_PP(reref=reref, classify=classify, participants=participants, repetitions=repetitions, band=band, action=action)
-      plot_decoding_results_average_PPs(reref=reref, window=window, classify=classify, repetitions=repetitions, band=band, action=action)
+      plot_decoding_results_single_PP(reref=reref, window=window, classify=classify, participants=participants, repetitions=repetitions, band=band, action=action, cv_method=cv_method)
+      #plot_decoding_results_average_PPs(reref=reref, window=window, classify=classify, repetitions=repetitions, band=band, action=action)
       
