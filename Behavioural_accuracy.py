@@ -16,6 +16,7 @@ def behavioural_accuracy(participants=['kh21','kh22', 'kh23', 'kh24','kh25']):
     out_path = 'C:/Users/laura/Documents/Data_Analysis/Data/BehaviouralResults/'
 
     pp_scores = np.zeros((len(participants), 4))
+    pp_correctTrials = np.zeros((len(participants), 4))
     pp_pvals = np.zeros((len(participants), 3))
 
     ppDF = pd.DataFrame(columns = ['pNr', 'trial nr.', 'stimulus nr.', 'repetition', 'decision', 'accuracy'])
@@ -35,6 +36,10 @@ def behavioural_accuracy(participants=['kh21','kh22', 'kh23', 'kh24','kh25']):
         header_labels = ['trial nr.', 'stimulus nr.', 'repetition', 'decision', 'accuracy', 'pNr']
         trialsDF = pd.DataFrame(trials, columns=header_labels)
         trialsDF = trialsDF.replace(['Correct', 'Incorrect', 'No', 'w', 'l', 'None'], [1, 0, nan, 1, 0, nan])
+
+        trialsDF['stimulus category'] = trialsDF['decision'][trialsDF['accuracy']==1]
+        trialsDF['stimulus category'][trialsDF['accuracy']==0] = 1-trialsDF['decision']
+
     # Add each PP dataframe to general DF
         ppDF = ppDF.append(trialsDF)
     
@@ -46,6 +51,8 @@ def behavioural_accuracy(participants=['kh21','kh22', 'kh23', 'kh24','kh25']):
 
     # Estimate and store scores for each repetition + total
         pp_scores[pNr,:] = [np.nanmean(rep1), np.nanmean(rep2), np.nanmean(rep3), np.nanmean(total)]
+        pp_correctTrials[pNr,:] = [np.nansum(rep1), np.nansum(rep2), np.nansum(rep3), np.nansum(total)]
+        
 
     # Single participant level statistics: paired samples t-test for each rep combination
         _, p1_2 = ttest_rel(rep1, rep2, nan_policy='omit')
