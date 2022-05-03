@@ -2,6 +2,31 @@ import numpy as np
 import os
 import pyxdf
 
+def cleanData(channels, data):
+    """Remove useless channels form channel list and seeg data
+    
+    Parameters
+    ----------
+    data: array (samples, channels)
+        EEG time series
+    channels: list of strings
+        channel names
+
+    Returns
+    ----------
+    data: array (samples, channels)
+        cleaned EEG time series   
+    channels: list of strings
+        channels names
+    """
+    bad_channels_i = [c for c, x in enumerate(channels) if '+' in x or 'el' in x] # define useless channels
+    bad_channels = [c for c in channels if '+' in x or 'el' in x] # define useless channels
+    
+    channels = [c for c in channels if c not in bad_channels]
+    data = np.delete(data, bad_channels_i, axis=1) # remove from sEEG data
+    
+    return channels, data 
+
 def commonAverageR(data):
     """Apply a common-average re-reference to the data
     
@@ -134,8 +159,7 @@ def laplacianR(data, channels, SIZE=1):
 
 
 if __name__=='__main__':
-    PPs=['kh21', 'kh22', 'kh23', 'kh24', 'kh25']
-
+    PPs = ['kh21', 'kh22', 'kh23', 'kh24', 'kh25']
 
     for pp in PPs:
         data_path = 'C:/Users/laura/Documents/Data_Analysis/Data/RawData/'
@@ -154,17 +178,15 @@ if __name__=='__main__':
     
     # Get channels names, remove useless channels and clean data
         channels = [x['label'][0] for x in data[n]['info']['desc'][0]['channels'][0]['channel']] # get channels names
-        bad_channels = [c for c, x in enumerate(channels) if '+' in x or 'el' in x] # define useless channels
-        seeg = np.delete(seeg_raw, bad_channels, axis=1) # remove from sEEG data
-        for x in reversed(bad_channels): # remove from channels names list
-            del channels[x]
-    
+        channels, seeg = cleanData(channels, seeg_raw)
+  
         np.save(out_path + '{}_cleanChannels'.format(pp), channels)
         
     # Rereferencing
         # LaplacianR
         seeg_LapR, chann_LapR = laplacianR(seeg, channels)
-        np.savez(out_path + '{}_seeg_LapR'.format(pp), seeg_LapR=seeg_LapR, chann_LapR=chann_LapR)
+        np.save(out_path + '{}_seeg_LapR'.format(pp), seeg_LapR)
+        np.save(out_path + '{}_chann_LapR'.format(pp), chann_LapR)
         
         # CAR
         seeg_CAR = commonAverageR(seeg)
@@ -176,4 +198,6 @@ if __name__=='__main__':
 
         # Bipolar
         seeg_BPR, chann_BPR, chann_BPRdes = bipolarR(seeg, channels)
-        np.savez(out_path + '{}_seeg_BPR'.format(pp), seeg_BPR=seeg_BPR, chann_BPR=chann_BPR, chann_BPRdes=chann_BPRdes)   
+        np.save(out_path + '{}_seeg_BPR'.format(pp), seeg_BPR)
+        np.save(out_path + '{}_chann_BPR'.format(pp), chann_BPR)
+        np.save(out_path + '{}_chann_des_BPR'.format(pp), chann_BPRdes)   
